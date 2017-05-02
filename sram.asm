@@ -417,17 +417,21 @@ osasci  =       &ffe3
         bcs     fail
         sbc     #&06
 .deci   and     #&0f
-        iny
         clc
         rts
 .fail   sec
         rts
 }
 
-;;; Parse the command tail for an SRLOAD/SRSAVE command.
+;;; Parse the filename for an SRLOAD/SRSAVE command.
         
-.parse
+.parse_fn
 {
+        lda     (&f2),y         ; check there is a filename!
+        cmp     #' '
+        beq     badfil
+        cmp     #&0d
+        beq     badfil
         tya                     ; fold Y into the base in &F2
         clc
         adc     &f2
@@ -438,13 +442,26 @@ osasci  =       &ffe3
 .loop1  iny                     ; skip over the characters of the filename.
         lda     (&f2),y
         cmp     #&0d
-        beq     misid
+        beq     fnend
         cmp     #' '
         bne     loop1
-.loop2  iny                     ; skip spaces between filename and ROM id.
-        lda     (&f2),y
+.fnend  rts
+.badfil jsr     errmsg
+        equb    &80
+        equs    "Missing filename"
+        equb    &00
+}
+
+;;; Parse a ROM ID.
+
+.parse_rid
+{
+.loop2  lda     (&f2),y         ; skip spaces between filename and ROM id.
+        iny
         cmp     #' '
         beq     loop2
+        cmp     #&0d
+        beq     misid
         jsr     xd2bin          ; convert ROM id to binary.
         bcs     badid
         sta     romid
@@ -509,7 +526,8 @@ osasci  =       &ffe3
         
 .srload
 {
-        jsr     parse           ; parse filename into OSFILE block.
+        jsr     parse_fn        ; parse filename to OSFILE block.
+        jsr     parse_rid       ; parse ROM ID into ZP romid
         jsr     ramchk          ; check there is RAM in the specified slot.
         jsr     bufchk          ; check there is memory for buffer.
         lda     oshwm           ; load ROM image at OSHWM.
@@ -573,7 +591,8 @@ base    =       &0102           ; where the main RAM copier will be.
         
 .srsave
 {
-        jsr     parse           ; parse filename into OSFILE block.
+        jsr     parse_fn        ; parse filename to OSFILE block.
+        jsr     parse_rid       ; parse ROM ID into ZP romid
         jsr     bufchk          ; check there is memory for buffer.
         ldx     #&80            ; copy from &8000 to OSHWM.
         ldy     oshwm+1
